@@ -42,13 +42,6 @@ public abstract class GenericActivity extends AppCompatActivity {
     private static final List<String> SCOPES = Collections.singletonList(DriveScopes.DRIVE_METADATA_READONLY);
     private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
 
-    /**
-     * Creates an authorized Credential object.
-     * //@param HTTP_TRANSPORT The network HTTP Transport.
-     * @return An authorized Credential object.
-     * @throws IOException If the credentials.json file cannot be found.
-     */
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -57,7 +50,8 @@ public abstract class GenericActivity extends AppCompatActivity {
     }
 
     public static void setUpAPI() throws IOException, GeneralSecurityException {
-        HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
+        HTTP_TRANSPORT = new com.google.api.client.http.javanet.NetHttpTransport();
+        System.out.println(HTTP_TRANSPORT);
         Drive service = new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
                 .setApplicationName(APPLICATION_NAME)
                 .build();
@@ -68,12 +62,20 @@ public abstract class GenericActivity extends AppCompatActivity {
         return service;
     }
 
-
+    /**
+     * Creates an authorized Credential object.
+     * @param HTTP_TRANSPORT The network HTTP Transport.
+     * @return An authorized Credential object.
+     * @throws IOException If the credentials.json file cannot be found.
+     */
 
     private static Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT) throws IOException {
         // Load client secrets.
+        System.out.println(GenericActivity.class.getResourceAsStream(CREDENTIALS_FILE_PATH));
         InputStream in = GenericActivity.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
         GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(in));
+        System.out.println(in);
+        System.out.println(clientSecrets);
 
         // Build flow and trigger user authorization request.
         GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
