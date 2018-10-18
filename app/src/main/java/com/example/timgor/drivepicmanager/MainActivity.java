@@ -16,14 +16,6 @@ public class MainActivity extends GenericActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        try {
-            GenericActivity.setUpAPI();
-        } catch (java.io.IOException e) {
-            displayMessage("IO exception: " + e, Toast.LENGTH_LONG);
-        } catch (java.security.GeneralSecurityException e){
-            displayMessage("Security exception: " + e, Toast.LENGTH_LONG);
-        }
-        Drive service = getService();
 
         /*
         try {

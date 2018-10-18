@@ -28,12 +28,6 @@ import java.util.Collections;
 import java.util.List;
 
 public abstract class GenericActivity extends AppCompatActivity {
-    private static Drive service;
-    private static NetHttpTransport HTTP_TRANSPORT;
-
-    private static final String APPLICATION_NAME = "Google Drive API Java Quickstart";
-    private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
-    private static final String TOKENS_DIRECTORY_PATH = "tokens";
 
     /**
      * Global instance of the scopes required by this quickstart.
@@ -48,45 +42,6 @@ public abstract class GenericActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
     }
-
-    public static void setUpAPI() throws IOException, GeneralSecurityException {
-        HTTP_TRANSPORT = new com.google.api.client.http.javanet.NetHttpTransport();
-        System.out.println(HTTP_TRANSPORT);
-        Drive service = new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
-                .setApplicationName(APPLICATION_NAME)
-                .build();
-
-    }
-
-    public Drive getService(){
-        return service;
-    }
-
-    /**
-     * Creates an authorized Credential object.
-     * @param HTTP_TRANSPORT The network HTTP Transport.
-     * @return An authorized Credential object.
-     * @throws IOException If the credentials.json file cannot be found.
-     */
-
-    private static Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT) throws IOException {
-        // Load client secrets.
-        System.out.println(GenericActivity.class.getResourceAsStream(CREDENTIALS_FILE_PATH));
-        InputStream in = GenericActivity.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
-        GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(in));
-        System.out.println(in);
-        System.out.println(clientSecrets);
-
-        // Build flow and trigger user authorization request.
-        GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
-                HTTP_TRANSPORT, JSON_FACTORY, clientSecrets, SCOPES)
-                .setDataStoreFactory(new FileDataStoreFactory(new java.io.File(TOKENS_DIRECTORY_PATH)))
-                .setAccessType("offline")
-                .build();
-        return new AuthorizationCodeInstalledApp(flow, new LocalServerReceiver()).authorize("user");
-    }
-
-
 
     public void displayMessage(String message, int duration) {
         Context context = getApplicationContext();
