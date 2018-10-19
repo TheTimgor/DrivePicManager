@@ -6,4 +6,11 @@
     android:layout_height="match_parent"
     tools:context=".SignInActivity">
 
+    <TextView
+        android:id="@+id/TextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Signing In"
+        tools:layout_editor_absoluteX="204dp"
+        tools:layout_editor_absoluteY="0dp" />
 </android.support.constraint.ConstraintLayout>

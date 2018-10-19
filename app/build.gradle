@@ -44,11 +44,13 @@ dependencies {
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
     // Google Play services Auth split
     implementation 'com.google.android.gms:play-services-auth:16.0.1'
+    implementation 'com.google.android.gms:play-services-drive:16.0.0'
     // Google Api Client library and Android extension
     implementation 'com.google.api-client:google-api-client:1.24.1'
-    implementation'com.google.api-client:google-api-client-android:1.22.0'
+    implementation'com.google.api-client:google-api-client-android:1.24.1'
     // Change to the API you want to access:
     // Below is just an example for People REST API access
+    compile 'com.google.apis:google-api-services-people:v1-rev4-1.22.0'
     implementation 'com.google.apis:google-api-services-drive:v3-rev110-1.23.0'
 
 }

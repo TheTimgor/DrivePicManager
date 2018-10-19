@@ -17,6 +17,10 @@ public class MainActivity extends GenericActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+
+        setUpAPI();
+        Drive service = getService();
+        displayMessage(String.valueOf(service));
         /*
         try {
             FileList result = service.files().list()
@@ -25,9 +29,9 @@ public class MainActivity extends GenericActivity {
                     .execute();
             List<File> files = result.getFiles();
             if (files == null || files.isEmpty()) {
-                displayMessage(("No files found.");
+                displayMessage(("No files found."));
             } else {
-                displayMessage(("Files:");
+                displayMessage(("Files:"));
                 for (File file : files) {
                     displayMessage(String.format("%s (%s)", file.getName(), file.getId()));
                 }
@@ -35,7 +39,7 @@ public class MainActivity extends GenericActivity {
         } catch (java.io.IOException e) {
             displayMessage("IO exception: " + e);
         }
-        */
+        //*/
 
     }
 

@@ -1,16 +1,29 @@
 package com.example.timgor.drivepicmanager;
 
+import android.accounts.Account;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.widget.Toast;
 
+import com.google.android.gms.auth.AccountChangeEvent;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
 import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.googleapis.auth.oauth2.GoogleClientSecrets;
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
@@ -28,13 +41,23 @@ import java.util.Collections;
 import java.util.List;
 
 public abstract class GenericActivity extends AppCompatActivity {
+    private static final String TAG = "Generic activity";
 
     /**
      * Global instance of the scopes required by this quickstart.
      * If modifying these scopes, delete your previously saved tokens/ folder.
      */
-    private static final List<String> SCOPES = Collections.singletonList(DriveScopes.DRIVE_METADATA_READONLY);
-    private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
+    /** Global instance of the HTTP transport. */
+    private static HttpTransport HTTP_TRANSPORT = AndroidHttp.newCompatibleTransport();
+    /** Global instance of the JSON factory. */
+    private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
+    private static Drive service;
+    protected static GoogleSignInAccount account;
+    private static Account mAccount;
+
+    private static final int RC_REQUEST_PERMISSION_SUCCESS_CONTINUE_SIGNIN = 0;
+    private static final int RC_SIGN_IN = 1;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,6 +65,56 @@ public abstract class GenericActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
     }
+
+    public void setUpAPI(){
+        if (!GoogleSignIn.hasPermissions(
+                GoogleSignIn.getLastSignedInAccount(getActivity()),
+                com.google.android.gms.drive.Drive.SCOPE_APPFOLDER)) {
+            GoogleSignIn.requestPermissions(
+                    GenericActivity.this,
+                    RC_REQUEST_PERMISSION_SUCCESS_CONTINUE_SIGNIN,
+                    GoogleSignIn.getLastSignedInAccount(getActivity()),
+                    com.google.android.gms.drive.Drive.SCOPE_APPFOLDER);
+        }
+        /*
+        Intent intent = new Intent(getApplicationContext(), SignInActivity.class);
+        startActivity(intent);
+        */
+
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .build();
+
+        GoogleSignInClient mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
+
+        Intent signInIntent = mGoogleSignInClient.getSignInIntent();
+        Log.d(TAG, signInIntent.toString());
+        startActivityForResult(signInIntent, RC_SIGN_IN);
+
+        mAccount = account.getAccount();
+
+        GoogleAccountCredential credential =
+                GoogleAccountCredential.usingOAuth2(
+                        GenericActivity.this,
+                        Collections.singleton(
+                                "https://www.googleapis.com/auth/drive")
+                );
+        credential.setSelectedAccount(mAccount);
+        service = new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential)
+                .setApplicationName("REST API sample")
+                .build();
+    }
+
+
+
+    public static Drive getService(){
+        return service;
+    }
+
+    private Context getActivity() {
+        return this.getApplicationContext();
+    }
+
 
     public void displayMessage(String message, int duration) {
         Context context = getApplicationContext();
@@ -54,5 +127,32 @@ public abstract class GenericActivity extends AppCompatActivity {
     public void displayMessage(String message) {
         displayMessage(message, Toast.LENGTH_SHORT);
     }
+
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        // Result returned from launching the Intent from GoogleSignInClient.getSignInIntent(...);
+        if (requestCode == RC_SIGN_IN) {
+            // The Task returned from this call is always completed, no need to attach
+            // a listener.
+            Log.w("Sign in flow", "activity returned result");
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            handleSignInResult(task);
+        }
+    }
+
+    private void handleSignInResult(Task<GoogleSignInAccount> completedTask) {
+        try {
+            account = completedTask.getResult(ApiException.class);
+            //updateUI(account);
+            Log.w("Sign in flow", "fetched account");
+
+        } catch (ApiException e) {
+            // The ApiException status code indicates the detailed failure reason.
+            // Please refer to the GoogleSignInStatusCodes class reference for more information.
+            Log.w("Sign in flow", "signInResult:failed code=" + e.getStatusCode());
+        }
+    }
+
 
 }
