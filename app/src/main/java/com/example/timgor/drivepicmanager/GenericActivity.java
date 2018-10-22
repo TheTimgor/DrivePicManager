@@ -55,14 +55,14 @@ public abstract class GenericActivity extends AppCompatActivity {
     protected static GoogleSignInAccount account;
     private static Account mAccount;
 
-    private static final int RC_REQUEST_PERMISSION_SUCCESS_CONTINUE_SIGNIN = 0;
-    private static final int RC_SIGN_IN = 1;
+    protected static final int RC_REQUEST_PERMISSION_SUCCESS_CONTINUE_SIGNIN = 0;
+    protected static final int RC_SIGN_IN = 1;
+    protected static final int REQUEST_AUTHORIZATION = 2;
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
 
     }
 
@@ -76,10 +76,6 @@ public abstract class GenericActivity extends AppCompatActivity {
                     GoogleSignIn.getLastSignedInAccount(getActivity()),
                     com.google.android.gms.drive.Drive.SCOPE_APPFOLDER);
         }
-        /*
-        Intent intent = new Intent(getApplicationContext(), SignInActivity.class);
-        startActivity(intent);
-        */
 
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
@@ -88,21 +84,10 @@ public abstract class GenericActivity extends AppCompatActivity {
         GoogleSignInClient mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
 
         Intent signInIntent = mGoogleSignInClient.getSignInIntent();
-        Log.d(TAG, signInIntent.toString());
+        Log.d(TAG, String.valueOf(signInIntent));
         startActivityForResult(signInIntent, RC_SIGN_IN);
 
-        mAccount = account.getAccount();
 
-        GoogleAccountCredential credential =
-                GoogleAccountCredential.usingOAuth2(
-                        GenericActivity.this,
-                        Collections.singleton(
-                                "https://www.googleapis.com/auth/drive")
-                );
-        credential.setSelectedAccount(mAccount);
-        service = new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential)
-                .setApplicationName("REST API sample")
-                .build();
     }
 
 
@@ -130,6 +115,7 @@ public abstract class GenericActivity extends AppCompatActivity {
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        Log.w(TAG, "activity returned result");
 
         // Result returned from launching the Intent from GoogleSignInClient.getSignInIntent(...);
         if (requestCode == RC_SIGN_IN) {
@@ -146,6 +132,20 @@ public abstract class GenericActivity extends AppCompatActivity {
             account = completedTask.getResult(ApiException.class);
             //updateUI(account);
             Log.w("Sign in flow", "fetched account");
+            mAccount = account.getAccount();
+            displayMessage(mAccount.toString());
+
+            GoogleAccountCredential credential =
+                    GoogleAccountCredential.usingOAuth2(
+                            GenericActivity.this,
+                            Collections.singleton(
+                                    "https://www.googleapis.com/auth/drive")
+                    );
+            credential.setSelectedAccount(mAccount);
+            service = new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential)
+                    .setApplicationName("REST API sample")
+                    .build();
+            displayMessage(service.toString());
 
         } catch (ApiException e) {
             // The ApiException status code indicates the detailed failure reason.
