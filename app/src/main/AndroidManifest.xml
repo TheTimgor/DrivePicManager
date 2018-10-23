@@ -3,6 +3,7 @@
     package="com.example.timgor.drivepicmanager">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
@@ -18,10 +19,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".ListActivity"
-            android:label="@string/title_activity_list"
-            android:theme="@style/AppTheme.NoActionBar"></activity>
+        <activity android:name=".ListActivity" />
+        <activity android:name=".DisplayFileActivity"></activity>
     </application>
 
 </manifest>
