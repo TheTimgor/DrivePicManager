@@ -41,7 +41,7 @@ import java.util.Collections;
 import java.util.List;
 
 public abstract class GenericActivity extends AppCompatActivity {
-    private static final String TAG = "Generic activity";
+    private static final String TAG = "Generic activity ~~";
 
     /**
      * Global instance of the scopes required by this quickstart.
@@ -51,7 +51,7 @@ public abstract class GenericActivity extends AppCompatActivity {
     private static HttpTransport HTTP_TRANSPORT = AndroidHttp.newCompatibleTransport();
     /** Global instance of the JSON factory. */
     private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
-    private static Drive service;
+    protected static Drive service;
     protected static GoogleSignInAccount account;
     private static Account mAccount;
 

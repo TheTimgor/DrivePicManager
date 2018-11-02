@@ -6,4 +6,16 @@
     android:layout_height="match_parent"
     tools:context=".DisplayFileActivity">
 
+    <TextView
+        android:text="you shouldn't see this text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/textContent"/>
+
+    <ImageView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/displayImage"/>
+
+
 </android.support.constraint.ConstraintLayout>

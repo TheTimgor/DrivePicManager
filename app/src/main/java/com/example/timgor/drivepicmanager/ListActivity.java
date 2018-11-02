@@ -3,16 +3,20 @@ package com.example.timgor.drivepicmanager;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
-import android.os.Looper;
 import android.support.constraint.ConstraintLayout;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
@@ -21,26 +25,31 @@ import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
 
 import static com.example.timgor.drivepicmanager.GenericActivity.REQUEST_AUTHORIZATION;
 
 public class ListActivity extends android.app.ListActivity {
 
     private static final String TAG = "List Activity ~~ ";
-    private ArrayAdapter<String> adapter;
+    private FilePreviewAdapter adapter;
     ArrayList<String> listItems = new ArrayList<String>();
+    ArrayList<FilePreview> listPreview = new ArrayList<FilePreview>();
     List<File> files;
+    public static final String FILE_ID = "com.example.drivepicmanager.FILE_ID";
+    public static final String CONTENT_LINK = "com.example.drivepicmanager.CONTENT_LINK";
+    private String currentFolder = "root";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_list);
-        adapter=new ArrayAdapter<String>(this,
-                android.R.layout.simple_list_item_1,
-                listItems);
+        adapter = new FilePreviewAdapter(this, R.layout.filepreview_layout,listPreview);
         setListAdapter(adapter);
 
         Log.d(TAG, "adapter set up");
@@ -49,12 +58,24 @@ public class ListActivity extends android.app.ListActivity {
         l.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                Log.d(TAG, listItems.get(position));
+                File f = files.get(position);
+                Log.d(TAG, "position " + position);
+                if(f.getMimeType().contains("folder")) {
+                    currentFolder = f.getId();
+                    Log.d(TAG, "opening folder " + currentFolder);
+                    displayFiles();
+                } else {
+                    Intent i = new Intent(ListActivity.this, DisplayFileActivity.class);
+                    i.putExtra(FILE_ID, f.getId());
+                    i.putExtra(CONTENT_LINK, f.getWebContentLink());
+                    startActivity(i);
+                }
             }
         });
 
         displayFiles();
     }
+
 
     public void displayFiles() {
         /*
@@ -66,14 +87,7 @@ public class ListActivity extends android.app.ListActivity {
         }catch(InterruptedException e ){}
         */
 
-
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            Log.e(TAG,e.toString());
-        }
-
-        Log.d(TAG, "got files");
+        displayMessage("displaying files . . . ", Toast.LENGTH_LONG);
 
         GetFilesTask t = new GetFilesTask();
         t.execute();
@@ -82,6 +96,7 @@ public class ListActivity extends android.app.ListActivity {
 
     public void displayResult(){
         adapter.notifyDataSetChanged();
+        Log.d(TAG, "updated adapter");
     }
 
 
@@ -97,38 +112,54 @@ public class ListActivity extends android.app.ListActivity {
 
             Log.d(TAG, "got service");
 
-            //*
+        //*
 
+
+
+
+            FileList result = null;
+            files = new ArrayList<File>();
+            String pageToken = null;
             try {
-
-
-                FileList result = service.files().list()
-                        .setPageSize(20)
-                        .setFields("nextPageToken, files(id, name)")
-                        .execute();
-
-                Log.d(TAG, "Got result");
-
-                files = result.getFiles();
-
-                Log.d(TAG, "got files list");
-
-                if (files == null || files.isEmpty()) {
-                    Log.e(TAG,"No files found.");
-                } else {
-
-                    for (File file : files) {
-                        Log.d(TAG,String.format("%s (%s)", file.getName(), file.getId()));
-                        listItems.add(String.format("%s (%s)", file.getName(), file.getId()));
-                    }
-                }
-
+                do {
+                    result = service.files().list()
+                            .setQ(String.format("'%s' in parents and trashed = false", currentFolder))
+                            .setFields("nextPageToken, files(id, name, mimeType, thumbnailLink)")
+                            .setPageToken(pageToken)
+                            .execute();
+                    files.addAll(result.getFiles());
+                    pageToken = result.getNextPageToken();
+                } while (pageToken != null);
             } catch (UserRecoverableAuthIOException e) {
                 startActivityForResult(e.getIntent(), REQUEST_AUTHORIZATION);
             } catch (IOException e) {
                 Log.e(TAG,"IO exception: " + e);
-
+                e.printStackTrace();
             }
+
+            if(result!=null) {
+
+                Log.d(TAG, "Got result");
+
+                Log.d(TAG, "number of files: " + files.size());
+
+                Log.d(TAG, "got files list");
+                listItems.clear();
+                listPreview.clear();
+
+                if (files == null || files.isEmpty()) {
+                    Log.w(TAG, "No files found.");
+                } else {
+
+                    for (File file : files) {
+
+                        listPreview.add(new FilePreview(file, String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink())));
+                        listItems.add(String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink()));
+                    }
+                }
+            }
+
+
             //*/
 
             return null;
@@ -138,66 +169,117 @@ public class ListActivity extends android.app.ListActivity {
         protected void onPostExecute(Void aVoid) {
             displayResult();
         }
+
     }
 
-    private class DisplayFilesThread extends Thread {
-        public void run() {
+    public void displayMessage(String message, int duration) {
+        Context context = getApplicationContext();
+        CharSequence text = message;
+        Toast toast = Toast.makeText(context, text, duration);
+        toast.show();
 
-            Log.d(TAG, "started thread");
-            Looper.prepare();
+    }
 
-            Drive service = GenericActivity.getService();
+    public void displayMessage(String message) {
+        displayMessage(message, Toast.LENGTH_SHORT);
+    }
 
-            Log.d(TAG, "got service");
+    public class FilePreview{
+        public File file;
+        public String displayText;
 
-            //*
+        private FilePreview(File file, String displayText) {
+            this.file = file;
+            this.displayText = displayText;
+        }
 
+
+
+    }
+
+    public class FilePreviewAdapter extends ArrayAdapter<FilePreview> {
+        private Context context;
+        ArrayList<FilePreview> previews = new ArrayList<FilePreview>();
+
+        public FilePreviewAdapter(Context context, int resource, ArrayList<FilePreview> objects) {
+            super(context, resource);
+            this.context = context;
+            this.previews = objects;
+            Log.d(TAG, "created adapter");
+        }
+
+        @Override
+        public int getCount() {
+            return previews.size();
+        }
+
+        @Override
+        public FilePreview getItem(int position) {
+            return previews.get(position);
+        }
+
+
+
+        public View getView(int position, View convertView, ViewGroup parent) {
+
+            FilePreview preview = previews.get(position);
+            LayoutInflater inflater = (LayoutInflater) context.getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
+            View view = inflater.inflate(R.layout.filepreview_layout, null);
+            ImageView icon = (ImageView) view.findViewById(R.id.thumb);
+            TextView text = (TextView) view.findViewById(R.id.text);
+
+            File file = preview.file;
+
+            DisplayImageTask t = new DisplayImageTask();
+            t.execute(file,icon);
+
+            text.setText(preview.displayText);
+
+            Log.d(TAG, "displayed text " + preview.displayText);
+
+            return view;
+
+        }
+    }
+
+    private class DisplayImageTask extends AsyncTask<Object, Void, Bitmap> {
+        ImageView icon;
+
+        @Override
+        protected Bitmap doInBackground(Object... params) {
+            File file = (File) params[0];
+            icon = (ImageView) params[1];
+
+            Bitmap bitmap = null;
             try {
-
-
-                FileList result = service.files().list()
-                        .setPageSize(10)
-                        .setFields("nextPageToken, files(id, name)")
-                        .execute();
-
-                Log.d(TAG, "Got result");
-
-                files = result.getFiles();
-
-                Log.d(TAG, "got files list");
-
-                if (files == null || files.isEmpty()) {
-                    Log.e(TAG,"No files found.");
-                } else {
-
-                    for (File file : files) {
-                        Log.d(TAG,String.format("%s (%s)", file.getName(), file.getId()));
-                        listItems.add(String.format("%s (%s)", file.getName(), file.getId()));
-                    }
+                if (file.getThumbnailLink() != null) {
+                    //*
+                    //URL url = new URL(URLEncoder.encode(file.getThumbnailLink(),"utf-8"));
+                    URL url = new URL(file.getThumbnailLink());
+                    Log.d(TAG, String.format("%s (%s)", file.getName(), file.getThumbnailLink()));
+                    URLConnection connection = url.openConnection();
+                    connection.connect();
+                    InputStream input = connection.getInputStream();
+                    bitmap = BitmapFactory.decodeStream(input);
+                    //*/
+                    //bitmap = BitmapFactory.decodeResource(getResources(),R.drawable.debug);
                 }
-
-            } catch (UserRecoverableAuthIOException e) {
-                startActivityForResult(e.getIntent(), REQUEST_AUTHORIZATION);
             } catch (IOException e) {
-                displayMessage("IO exception: " + e, Toast.LENGTH_LONG);
-
+                Log.e(TAG, "IO exception: " + e);
+                e.printStackTrace();
             }
-            //*/
 
-            Looper.loop();
+
+            return bitmap;
         }
 
-        public void displayMessage(String message, int duration) {
-            Context context = getApplicationContext();
-            CharSequence text = message;
-            Toast toast = Toast.makeText(context, text, duration);
-            toast.show();
-
+        @Override
+        protected void onPostExecute(Bitmap bitmap) {
+            setImage(icon, bitmap);
         }
+    }
 
-        public void displayMessage(String message) {
-            displayMessage(message, Toast.LENGTH_SHORT);
-        }
-
+    public void setImage(ImageView v, Bitmap b){
+        v.setImageBitmap(b);
     }
 }
