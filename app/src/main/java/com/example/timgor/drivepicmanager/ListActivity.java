@@ -40,10 +40,11 @@ public class ListActivity extends android.app.ListActivity {
     private FilePreviewAdapter adapter;
     ArrayList<String> listItems = new ArrayList<String>();
     ArrayList<FilePreview> listPreview = new ArrayList<FilePreview>();
-    List<File> files;
+    List<File> files = new ArrayList<File>();
     public static final String FILE_ID = "com.example.drivepicmanager.FILE_ID";
     public static final String CONTENT_LINK = "com.example.drivepicmanager.CONTENT_LINK";
     private String currentFolder = "root";
+    protected String nextPageToken;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,8 +61,18 @@ public class ListActivity extends android.app.ListActivity {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 File f = files.get(position);
                 Log.d(TAG, "position " + position);
+                Log.d(TAG, "type " + f.getMimeType());
+                Log.d(TAG, "name " + f.getName());
                 if(f.getMimeType().contains("folder")) {
+                    ListView l = (ListView)((ConstraintLayout)findViewById(R.id.rootLayout)).getChildAt(0);
+                    l.setSelectionAfterHeaderView();
                     currentFolder = f.getId();
+                    nextPageToken = null;
+                    files = new ArrayList<File>();
+                    listPreview = new ArrayList<FilePreview>();
+                    //adapter = new FilePreviewAdapter(this, R.layout.filepreview_layout,listPreview);
+                    //setListAdapter(adapter);
+                    //adapter.notifyDataSetChanged();
                     Log.d(TAG, "opening folder " + currentFolder);
                     displayFiles();
                 } else {
@@ -74,6 +85,20 @@ public class ListActivity extends android.app.ListActivity {
         });
 
         displayFiles();
+    }
+
+    public void switchFolder(File f){
+        ListView l = (ListView)((ConstraintLayout)findViewById(R.id.rootLayout)).getChildAt(0);
+        l.setSelectionAfterHeaderView();
+        currentFolder = f.getId();
+        nextPageToken = null;
+        files = new ArrayList<File>();
+        listPreview = new ArrayList<FilePreview>();
+        //adapter = new FilePreviewAdapter(this, R.layout.filepreview_layout,listPreview);
+        //setListAdapter(adapter);
+        //adapter.notifyDataSetChanged();
+        Log.d(TAG, "opening folder " + currentFolder);
+        //displayFiles();
     }
 
 
@@ -89,8 +114,8 @@ public class ListActivity extends android.app.ListActivity {
 
         displayMessage("displaying files . . . ", Toast.LENGTH_LONG);
 
-        GetFilesTask t = new GetFilesTask();
-        t.execute();
+        GetFileTask t = new GetFileTask();
+        t.execute(1);
 
     }
 
@@ -99,37 +124,42 @@ public class ListActivity extends android.app.ListActivity {
         Log.d(TAG, "updated adapter");
     }
 
-
-
-
-    private class GetFilesTask extends AsyncTask<Void,Void,Void>{
+    private class InitTask extends AsyncTask<Void, Void, Void>{
 
         @Override
-        protected Void doInBackground(Void... params) {
+        protected Void doInBackground(Void... voids) {
+            return null;
+        }
+    }
+
+    private class GetFileTask extends AsyncTask<Integer,Void,Void>{
+
+        @Override
+        protected Void doInBackground(Integer... params) {
             Log.d(TAG, "started thread");
+
+            int pageSize = params[0].intValue();
 
             Drive service = GenericActivity.getService();
 
             Log.d(TAG, "got service");
 
-        //*
+            //*
 
 
 
 
             FileList result = null;
-            files = new ArrayList<File>();
-            String pageToken = null;
+
             try {
-                do {
-                    result = service.files().list()
-                            .setQ(String.format("'%s' in parents and trashed = false", currentFolder))
-                            .setFields("nextPageToken, files(id, name, mimeType, thumbnailLink)")
-                            .setPageToken(pageToken)
-                            .execute();
-                    files.addAll(result.getFiles());
-                    pageToken = result.getNextPageToken();
-                } while (pageToken != null);
+                result = service.files().list()
+                        .setQ(String.format("'%s' in parents and trashed = false", currentFolder))
+                        .setFields("nextPageToken, files(id, name, mimeType, thumbnailLink)")
+                        .setPageToken(nextPageToken)
+                        .setPageSize(pageSize)
+                        .execute();
+                files.addAll(result.getFiles());
+                nextPageToken = result.getNextPageToken();
             } catch (UserRecoverableAuthIOException e) {
                 startActivityForResult(e.getIntent(), REQUEST_AUTHORIZATION);
             } catch (IOException e) {
@@ -144,8 +174,6 @@ public class ListActivity extends android.app.ListActivity {
                 Log.d(TAG, "number of files: " + files.size());
 
                 Log.d(TAG, "got files list");
-                listItems.clear();
-                listPreview.clear();
 
                 if (files == null || files.isEmpty()) {
                     Log.w(TAG, "No files found.");
@@ -155,6 +183,7 @@ public class ListActivity extends android.app.ListActivity {
 
                         listPreview.add(new FilePreview(file, String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink())));
                         listItems.add(String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink()));
+
                     }
                 }
             }
@@ -187,6 +216,7 @@ public class ListActivity extends android.app.ListActivity {
     public class FilePreview{
         public File file;
         public String displayText;
+
 
         private FilePreview(File file, String displayText) {
             this.file = file;
@@ -221,6 +251,13 @@ public class ListActivity extends android.app.ListActivity {
 
 
         public View getView(int position, View convertView, ViewGroup parent) {
+
+            if(nextPageToken != null && position == previews.size()-1) {
+                GetFileTask t0 = new GetFileTask();
+                t0.execute(100);
+            }
+
+            Log.d(TAG,"token"+nextPageToken);
 
             FilePreview preview = previews.get(position);
             LayoutInflater inflater = (LayoutInflater) context.getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
