@@ -31,10 +31,11 @@ public class DisplayFileActivity extends GenericActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Log.d(TAG, "onCreate");
         setContentView(R.layout.activity_display_file);
         DisplayFileActivity.GetFileTask t = new DisplayFileActivity.GetFileTask();
         contentURl = getIntent().getStringExtra(ListActivity.CONTENT_LINK);
-        t.execute();
+        t.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
 
 
     }
@@ -48,6 +49,7 @@ public class DisplayFileActivity extends GenericActivity {
                 Intent i = getIntent();
                 String id = i.getStringExtra(ListActivity.FILE_ID);
                 driveFile = service.files().get(id).execute();
+                Log.d(TAG, "doInBackground: got file");
             } catch (IOException e) {
                 Log.e(TAG, e.toString());
             }
@@ -73,7 +75,8 @@ public class DisplayFileActivity extends GenericActivity {
         //Bitmap debugBM = BitmapFactory.decodeResource(getResources(),R.drawable.debug);
         //setImage(icon, debugBM);
         String id = driveFile.getId();
-        new DisplayImageTask().execute(id,String.valueOf(isImage));
+        DisplayImageTask t = new DisplayImageTask();
+        t.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR,id,String.valueOf(isImage));
 
 
 
@@ -109,6 +112,9 @@ public class DisplayFileActivity extends GenericActivity {
         v.setImageBitmap(b);
     }
 
-
-
+    @Override
+    protected void onPause() {
+        super.onPause();
+        //finish();
+    }
 }
