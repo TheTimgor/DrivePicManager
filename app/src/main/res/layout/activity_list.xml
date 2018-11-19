@@ -5,7 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:id="@+id/rootLayout"
-    tools:context=".ListActivity">
+    tools:context=".ListActivity"
+    android:screenOrientation="portrait" >
 
     <ListView
         android:id="@android:id/list"

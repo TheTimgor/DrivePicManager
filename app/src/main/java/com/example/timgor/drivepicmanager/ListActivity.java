@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
+import android.support.annotation.NonNull;
 import android.support.constraint.ConstraintLayout;
 import android.os.Bundle;
 import android.util.Log;
@@ -25,6 +26,7 @@ import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -69,6 +71,7 @@ public class ListActivity extends android.app.ListActivity {
                 Log.d(TAG, "position " + position);
                 if(f.getMimeType().contains("folder")) {
                     getFilesTask.cancel(false);
+                    currentFolder = f.getId();
                     Log.d(TAG, "opening folder " + currentFolder);
                     displayFiles();
                 } else {
@@ -85,6 +88,8 @@ public class ListActivity extends android.app.ListActivity {
         currentFolder = "root";
         displayFiles();
 
+        AsyncTask t = new ThumbTask();
+        t.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
 
     }
 
@@ -171,26 +176,7 @@ public class ListActivity extends android.app.ListActivity {
                                 return null;
                             }
 
-                            Bitmap bitmap = null;
-                            try {
-                                if (file.getThumbnailLink() != null) {
-                                    //*
-                                    //URL url = new URL(URLEncoder.encode(file.getThumbnailLink(),"utf-8"));
-                                    URL url = new URL(file.getThumbnailLink());
-                                    Log.d(TAG, String.format("%s (%s)", file.getName(), file.getThumbnailLink()));
-                                    URLConnection connection = url.openConnection();
-                                    connection.connect();
-                                    InputStream input = connection.getInputStream();
-                                    bitmap = BitmapFactory.decodeStream(input);
-                                    //*/
-                                    //bitmap = BitmapFactory.decodeResource(getResources(),R.drawable.debug);
-                                }
-                            } catch (IOException e) {
-                                Log.e(TAG, "IO exception: " + e);
-                                e.printStackTrace();
-                            }
-
-                            imageBitmaps.add(bitmap);
+                            imageBitmaps.add(null);
                             displayImageTasks.add(new DisplayImageTask());
                             tempListPreview.add(new FilePreview(file, String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink())));
                             listItems.add(String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink()));
@@ -245,6 +231,7 @@ public class ListActivity extends android.app.ListActivity {
         @Override
         protected void onProgressUpdate(Void... values) {
 
+
             listPreview.addAll(tempListPreview);
             tempListPreview.clear();
             displayResult();
@@ -286,14 +273,21 @@ public class ListActivity extends android.app.ListActivity {
     }
 
     public class FilePreviewAdapter extends ArrayAdapter<FilePreview> {
-        private Context context;
-        ArrayList<FilePreview> previews = new ArrayList<FilePreview>();
 
+        private Context context;
+
+        ArrayList<FilePreview> previews = new ArrayList<FilePreview>();
         public FilePreviewAdapter(Context context, int resource, ArrayList<FilePreview> objects) {
             super(context, resource);
             this.context = context;
             this.previews = objects;
             Log.d(TAG, "created adapter");
+        }
+
+        @NonNull
+        @Override
+        public Context getContext() {
+            return context;
         }
 
         @Override
@@ -324,25 +318,6 @@ public class ListActivity extends android.app.ListActivity {
             bitmap = imageBitmaps.get(position);
             setImage(icon, bitmap);
 
-
-
-            /*
-            DisplayImageTask t = displayImageTasks.get(position);
-            if(t.getStatus() == AsyncTask.Status.PENDING) {
-                t.execute(file, icon);
-                displayImageTasks.set(position, new DisplayImageTask());
-            }
-
-            int firstHideIndex = ((ListView)parent).getFirstVisiblePosition() - 5;
-            int lastHideIndex = ((ListView)parent).getLastVisiblePosition() + 5;
-/*
-            if(firstHideIndex >= 0){
-                displayImageTasks.get(firstHideIndex).cancel(true);
-            }
-  */
-
-
-
             return view;
 
         }
@@ -350,6 +325,8 @@ public class ListActivity extends android.app.ListActivity {
 
     private class DisplayImageTask extends AsyncTask<Object, Void, Bitmap> {
         ImageView icon;
+        int position = -1;
+        BufferedInputStream input;
 
         @Override
         protected Bitmap doInBackground(Object... params) {
@@ -358,6 +335,7 @@ public class ListActivity extends android.app.ListActivity {
 
             File file = (File) params[0];
             icon = (ImageView) params[1];
+            position = (int) params[2];
 
             Bitmap bitmap = null;
             try {
@@ -368,7 +346,7 @@ public class ListActivity extends android.app.ListActivity {
                     Log.d(TAG, String.format("%s (%s)", file.getName(), file.getThumbnailLink()));
                     URLConnection connection = url.openConnection();
                     connection.connect();
-                    InputStream input = connection.getInputStream();
+                    input = new BufferedInputStream(connection.getInputStream());
                     bitmap = BitmapFactory.decodeStream(input);
                     //*/
                     //bitmap = BitmapFactory.decodeResource(getResources(),R.drawable.debug);
@@ -384,14 +362,95 @@ public class ListActivity extends android.app.ListActivity {
 
         @Override
         protected void onPostExecute(Bitmap bitmap) {
-            setImage(icon, bitmap);
+            try {
+                setImage(icon, bitmap);
+                imageBitmaps.set(position, bitmap);
+            } catch(ArrayIndexOutOfBoundsException e){
+                Log.e(TAG, "onPostExecute: ", e);
+                e.printStackTrace();
+            }
         }
+
+        @Override
+        protected void onCancelled() {
+            Log.d(TAG, "onCancelled");
+            if(input != null) {
+                input.mark(0);
+                try {
+                    input.reset();
+                    input.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+        }
+
     }
-
-
 
     public void setImage(ImageView v, Bitmap b){
         v.setImageBitmap(b);
         v.postInvalidate();
+
+    }
+
+    private class ThumbTask extends AsyncTask{
+
+        @Override
+        protected Object doInBackground(Object[] objects) {
+            while (!isCancelled()){
+
+                for(int position = listView.getFirstVisiblePosition(); position <= listView.getLastVisiblePosition(); position++) {
+                    FilePreview preview = adapter.getItem(position);
+                    File file = preview.file;
+
+                    if (imageBitmaps.size() > position && imageBitmaps.get(position) == null && file.getThumbnailLink() != null) {
+
+                        Context context = adapter.getContext();
+                        LayoutInflater inflater = (LayoutInflater) context.getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
+                        View view = inflater.inflate(R.layout.filepreview_layout, null);
+                        ImageView icon = (ImageView) view.findViewById(R.id.thumb);
+
+                        Log.d(TAG, "doInBackground: link " + file.getThumbnailLink());
+                        DisplayImageTask t = displayImageTasks.get(position);
+                        if (t.getStatus() == AsyncTask.Status.PENDING) {
+                            try {
+                                t.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, file, icon, position);
+                            } catch (java.util.concurrent.RejectedExecutionException e) {
+                                e.printStackTrace();
+                                Log.e(TAG, "getView: ", e);
+                            }
+                            displayImageTasks.set(position, new DisplayImageTask());
+                        }
+
+
+                    }
+
+                }
+
+                int firstHideIndex = listView.getFirstVisiblePosition();
+                //Log.d(TAG, "getView: firstHideIndex " + firstHideIndex);
+
+                int lastHideIndex = listView.getLastVisiblePosition();
+                //Log.d(TAG, "getView: lastHideIndex " + lastHideIndex);
+
+
+                for(int i = 0; i<displayImageTasks.size(); i++){
+                    if(displayImageTasks.get(i) != null) {
+                        if (i < firstHideIndex || i > lastHideIndex && displayImageTasks.get(i).getStatus() == AsyncTask.Status.RUNNING) {
+                            //Log.d(TAG, "getView: cancelling task at " + i);
+                            try {
+                                displayImageTasks.get(i).cancel(true);
+                                displayImageTasks.set(i, new DisplayImageTask());
+                            } catch (IndexOutOfBoundsException e) {
+                                Log.e(TAG, "doInBackground: ", e);
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
     }
 }
