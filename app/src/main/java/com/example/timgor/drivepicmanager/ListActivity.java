@@ -6,9 +6,11 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
+import android.os.NetworkOnMainThreadException;
 import android.support.annotation.NonNull;
 import android.support.constraint.ConstraintLayout;
 import android.os.Bundle;
+import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -32,13 +34,17 @@ import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.Stack;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import static android.os.Process.THREAD_PRIORITY_BACKGROUND;
 import static android.os.Process.THREAD_PRIORITY_MORE_FAVORABLE;
 import static com.example.timgor.drivepicmanager.GenericActivity.REQUEST_AUTHORIZATION;
+import static com.example.timgor.drivepicmanager.GenericActivity.service;
 
-public class ListActivity extends android.app.ListActivity {
+public class ListActivity extends AppCompatActivity {
 
     private static final String TAG = "List Activity ~~ ";
     private FilePreviewAdapter adapter;
@@ -48,31 +54,36 @@ public class ListActivity extends android.app.ListActivity {
     public static final String FILE_ID = "com.example.drivepicmanager.FILE_ID";
     public static final String CONTENT_LINK = "com.example.drivepicmanager.CONTENT_LINK";
     private String currentFolder = "root";
+    private Stack<String> history = new Stack<>();
     ArrayList<DisplayImageTask> displayImageTasks = new ArrayList<>();
     ArrayList<Bitmap> imageBitmaps = new ArrayList<>();
     ListView listView;
     public boolean isGetFilesTaskPaused = false;
     GetFilesTask getFilesTask = new GetFilesTask();
+    ThumbCanceler thumbCanceler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_list);
         adapter = new FilePreviewAdapter(this, R.layout.filepreview_layout,listPreview);
-        setListAdapter(adapter);
+        listView = (ListView)((ConstraintLayout)findViewById(R.id.rootLayout)).getChildAt(0);
+        listView.setAdapter(adapter);
 
         Log.d(TAG, "adapter set up");
 
-        listView = (ListView)((ConstraintLayout)findViewById(R.id.rootLayout)).getChildAt(0);
+        history.push("root");
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 File f = files.get(position);
                 Log.d(TAG, "position " + position);
                 if(f.getMimeType().contains("folder")) {
-                    getFilesTask.cancel(false);
                     currentFolder = f.getId();
                     Log.d(TAG, "opening folder " + currentFolder);
+                    history.push(currentFolder);
+                    Log.d(TAG, "history " + history);
                     displayFiles();
                 } else {
                     //isGetFilesTaskPaused = true;
@@ -88,8 +99,9 @@ public class ListActivity extends android.app.ListActivity {
         currentFolder = "root";
         displayFiles();
 
-        AsyncTask t = new ThumbTask();
-        t.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        //thumbCanceler = new ThumbCanceler();
+        //thumbCanceler.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+
 
     }
 
@@ -111,6 +123,10 @@ public class ListActivity extends android.app.ListActivity {
 
         displayMessage("displaying files . . . ", Toast.LENGTH_LONG);
 
+
+        if(getFilesTask != null) {
+            getFilesTask.cancel(false);
+        }
         getFilesTask = new GetFilesTask();
         getFilesTask.execute();
 
@@ -132,6 +148,12 @@ public class ListActivity extends android.app.ListActivity {
         protected void onPreExecute() {
             super.onPreExecute();
 
+            /*
+            for(DisplayImageTask t : displayImageTasks){
+                t.cancel(true);
+            }
+            */
+
             listItems.clear();
             listPreview.clear();
             displayImageTasks.clear();
@@ -139,6 +161,7 @@ public class ListActivity extends android.app.ListActivity {
             tempListPreview.clear();
 
             displayResult();
+
         }
 
         @Override
@@ -157,42 +180,55 @@ public class ListActivity extends android.app.ListActivity {
 
             //*
 
-
             try {
+                result = service.files().list()
+                        .setQ(String.format("'%s' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'", currentFolder))
+                        .setFields("nextPageToken, files(id, name, mimeType, thumbnailLink)")
+                        .execute();
+                files.addAll(result.getFiles());
+                currentFiles = result.getFiles();
+                for (File file : currentFiles) {
+
+                    if(isCancelled()){
+                        return null;
+                    }
+
+                    imageBitmaps.add(null);
+                    displayImageTasks.add(new DisplayImageTask());
+                    tempListPreview.add(new FilePreview(file, String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink())));
+                    listItems.add(String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink()));
+
+                }
                 do {
-                    if(!isGetFilesTaskPaused) {
+                    result = service.files().list()
+                            .setQ(String.format("'%s' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", currentFolder))
+                            .setFields("nextPageToken, files(id, name, mimeType, thumbnailLink)")
+                            .setPageToken(pageToken)
+                            .setPageSize(10)
+                            .execute();
+                    files.addAll(result.getFiles());
+                    currentFiles = result.getFiles();
+                    for (File file : currentFiles) {
 
-                        result = service.files().list()
-                                .setQ(String.format("'%s' in parents and trashed = false", currentFolder))
-                                .setFields("nextPageToken, files(id, name, mimeType, thumbnailLink)")
-                                .setPageToken(pageToken)
-                                .setPageSize(10)
-                                .execute();
-                        files.addAll(result.getFiles());
-                        currentFiles = result.getFiles();
-                        for (File file : currentFiles) {
-
-                            if(isCancelled()){
-                                return null;
-                            }
-
-                            imageBitmaps.add(null);
-                            displayImageTasks.add(new DisplayImageTask());
-                            tempListPreview.add(new FilePreview(file, String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink())));
-                            listItems.add(String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink()));
-
+                        if(isCancelled()){
+                            return null;
                         }
-                        pageToken = result.getNextPageToken();
-                        publishProgress();
 
+                        imageBitmaps.add(null);
+                        displayImageTasks.add(new DisplayImageTask());
+                        tempListPreview.add(new FilePreview(file, String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink())));
+                        listItems.add(String.format("(%s) %s \n%s", file.getMimeType(), file.getName(), file.getWebContentLink()));
 
                     }
+                    pageToken = result.getNextPageToken();
+                    publishProgress();
 
                 } while (pageToken != null && !(isCancelled()));
             } catch (UserRecoverableAuthIOException e) {
                 startActivityForResult(e.getIntent(), REQUEST_AUTHORIZATION);
+
             } catch (IOException e) {
-                Log.e(TAG,"IO exception: " + e);
+                Log.e(TAG,"IO exception: ", e);
                 e.printStackTrace();
             }
 
@@ -231,18 +267,18 @@ public class ListActivity extends android.app.ListActivity {
         @Override
         protected void onProgressUpdate(Void... values) {
 
-
             listPreview.addAll(tempListPreview);
             tempListPreview.clear();
             displayResult();
-
-
             Log.d(TAG, "onProgressUpdate");
+
         }
 
         @Override
         protected void onPostExecute(Void aVoid) {
+            displayMessage(String.format("Displayed %s files", files.size()));
             displayResult();
+
         }
 
     }
@@ -296,8 +332,12 @@ public class ListActivity extends android.app.ListActivity {
         }
 
         @Override
-        public FilePreview getItem(int position) {
-            return previews.get(position);
+        public FilePreview getItem(int position){
+            if(previews.size() > position) {
+                return previews.get(position);
+            } else {
+                return null;
+            }
         }
 
         public View getView(int position, View convertView, ViewGroup parent) {
@@ -313,7 +353,14 @@ public class ListActivity extends android.app.ListActivity {
             text.setText(preview.displayText);
 
             Log.d(TAG, "displayed text " + preview.displayText);
+            Log.d(TAG, "getView: " + displayImageTasks.get(position).toString());
 
+            if (displayImageTasks.get(position).getStatus() == AsyncTask.Status.PENDING) {
+                displayImageTasks.get(position).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, file, icon, position);
+            } else {
+                Log.d(TAG, "getView: task not pending");
+            }
+            
             Bitmap bitmap;
             bitmap = imageBitmaps.get(position);
             setImage(icon, bitmap);
@@ -352,7 +399,7 @@ public class ListActivity extends android.app.ListActivity {
                     //bitmap = BitmapFactory.decodeResource(getResources(),R.drawable.debug);
                 }
             } catch (IOException e) {
-                Log.e(TAG, "IO exception: " + e);
+                Log.e(TAG, "IO exception: ", e);
                 e.printStackTrace();
             }
 
@@ -364,7 +411,9 @@ public class ListActivity extends android.app.ListActivity {
         protected void onPostExecute(Bitmap bitmap) {
             try {
                 setImage(icon, bitmap);
-                imageBitmaps.set(position, bitmap);
+                if(position<imageBitmaps.size()) {
+                    imageBitmaps.set(position, bitmap);
+                }
             } catch(ArrayIndexOutOfBoundsException e){
                 Log.e(TAG, "onPostExecute: ", e);
                 e.printStackTrace();
@@ -373,14 +422,16 @@ public class ListActivity extends android.app.ListActivity {
 
         @Override
         protected void onCancelled() {
-            Log.d(TAG, "onCancelled");
+            //Log.d(TAG, "onCancelled");
             if(input != null) {
                 input.mark(0);
                 try {
                     input.reset();
                     input.close();
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    Log.e(TAG, "onCancelled: ",e );
+                } catch (NetworkOnMainThreadException e){
+                    Log.e(TAG, "onCancelled: ", e);
                 }
             }
 
@@ -390,44 +441,19 @@ public class ListActivity extends android.app.ListActivity {
 
     public void setImage(ImageView v, Bitmap b){
         v.setImageBitmap(b);
-        v.postInvalidate();
+        v.invalidate();
+        adapter.notifyDataSetChanged();
 
     }
 
-    private class ThumbTask extends AsyncTask{
+    
+
+    private class ThumbCanceler extends AsyncTask<Void, Void, Void>{
 
         @Override
-        protected Object doInBackground(Object[] objects) {
-            while (!isCancelled()){
-
-                for(int position = listView.getFirstVisiblePosition(); position <= listView.getLastVisiblePosition(); position++) {
-                    FilePreview preview = adapter.getItem(position);
-                    File file = preview.file;
-
-                    if (imageBitmaps.size() > position && imageBitmaps.get(position) == null && file.getThumbnailLink() != null) {
-
-                        Context context = adapter.getContext();
-                        LayoutInflater inflater = (LayoutInflater) context.getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
-                        View view = inflater.inflate(R.layout.filepreview_layout, null);
-                        ImageView icon = (ImageView) view.findViewById(R.id.thumb);
-
-                        Log.d(TAG, "doInBackground: link " + file.getThumbnailLink());
-                        DisplayImageTask t = displayImageTasks.get(position);
-                        if (t.getStatus() == AsyncTask.Status.PENDING) {
-                            try {
-                                t.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, file, icon, position);
-                            } catch (java.util.concurrent.RejectedExecutionException e) {
-                                e.printStackTrace();
-                                Log.e(TAG, "getView: ", e);
-                            }
-                            displayImageTasks.set(position, new DisplayImageTask());
-                        }
-
-
-                    }
-
-                }
-
+        protected Void doInBackground(Void... voids) {
+            while(!isCancelled()) {
+                /*
                 int firstHideIndex = listView.getFirstVisiblePosition();
                 //Log.d(TAG, "getView: firstHideIndex " + firstHideIndex);
 
@@ -435,8 +461,8 @@ public class ListActivity extends android.app.ListActivity {
                 //Log.d(TAG, "getView: lastHideIndex " + lastHideIndex);
 
 
-                for(int i = 0; i<displayImageTasks.size(); i++){
-                    if(displayImageTasks.get(i) != null) {
+                for (int i = 0; i < displayImageTasks.size(); i++) {
+                    if (displayImageTasks.get(i) != null) {
                         if (i < firstHideIndex || i > lastHideIndex && displayImageTasks.get(i).getStatus() == AsyncTask.Status.RUNNING) {
                             //Log.d(TAG, "getView: cancelling task at " + i);
                             try {
@@ -449,8 +475,27 @@ public class ListActivity extends android.app.ListActivity {
                         }
                     }
                 }
+                */
             }
             return null;
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if(currentFolder == "root") {
+            for (int i = 0; i < displayImageTasks.size(); i++) {
+                displayImageTasks.get(i).cancel(true);
+            }
+            getFilesTask.cancel(true);
+            thumbCanceler.cancel(true);
+            super.onBackPressed();
+        } else {
+            history.pop();
+            currentFolder = history.peek();
+            getFilesTask.cancel(true);
+            Log.d(TAG, "history " + history);
+            displayFiles();
         }
     }
 }

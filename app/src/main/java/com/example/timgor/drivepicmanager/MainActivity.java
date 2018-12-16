@@ -10,6 +10,8 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.tasks.Task;
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
@@ -50,7 +52,6 @@ public class MainActivity extends GenericActivity {
                 break;
         }
     }
-
 
 
 }
